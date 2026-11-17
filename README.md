@@ -28,3 +28,12 @@ Chromebooks can run the simulator and AI camera through a school-hosted HTTPS si
 The simulator is approximate and does not model real physics. Python output is illustrative pseudocode, not a directly runnable LEGO program. The generic MobileNet classifier may not recognise snacks reliably. The current Blockly interpreter handles a restricted set of blocks and simple conditions. Hardware connection, BLE latency and motor direction have not been tested on actual devices.
 
 Official API: https://github.com/LEGO/LEGOEducation
+
+
+## v4 sensor and controller extensions
+
+- Adds simulated colour sensor input and interactive two-axis joystick.
+- Adds Blockly conditions for detected colours and joystick directions.
+- Conditions are evaluated from simulator values at program start, not continuously during movement.
+- Physical Colour Sensor and Controller API integration is **not yet implemented**; validate exact API methods and BLE behaviour before enabling.
+- Keep real motor tests supervised, with wheels raised. STOP over Bluetooth is not a safety-rated emergency stop.
