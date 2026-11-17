@@ -151,11 +151,91 @@ Blockly.Python.forBlock['turn']=b=>`turn(${b.getFieldValue('ANGLE')})\n`;
 Blockly.Python.forBlock['colour_is']=b=>[`colour_is(${JSON.stringify(b.getFieldValue('COLOR'))})`,Blockly.Python.ORDER_FUNCTION_CALL];Blockly.Python.forBlock['joystick_direction']=b=>[`joystick_is(${JSON.stringify(b.getFieldValue('DIRECTION'))})`,Blockly.Python.ORDER_FUNCTION_CALL];Blockly.Python.forBlock['snack']=()=>['snack_detected()',Blockly.Python.ORDER_FUNCTION_CALL];
 const py=document.querySelector('#python');function refresh(){py.textContent='# Pseudocode: drive(), turn() and snack_detected()\n'+Blockly.Python.workspaceToCode(ws)}ws.addChangeListener(refresh);refresh();
 let sensorColour='NONE',joy={x:0,y:0};let robot={x:65,y:245,a:-Math.PI/2},running=false,detected=false;const canvas=document.querySelector('#arena'),ctx=canvas.getContext('2d');function draw(){ctx.clearRect(0,0,480,310);ctx.strokeStyle='#d7e2dd';for(let x=0;x<480;x+=30){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,310);ctx.stroke()}for(let y=0;y<310;y+=30){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(480,y);ctx.stroke()}ctx.fillStyle='#f5c34d';ctx.fillRect(342,70,34,30);ctx.fillStyle='#6ebc8a';ctx.fillRect(398,230,60,55);ctx.save();ctx.translate(robot.x,robot.y);ctx.rotate(robot.a+Math.PI/2);ctx.fillStyle='#317cc2';ctx.fillRect(-17,-15,34,30);ctx.fillStyle='#26354b';ctx.fillRect(-22,-12,5,24);ctx.fillRect(17,-12,5,24);ctx.fillStyle='white';ctx.beginPath();ctx.moveTo(0,-21);ctx.lineTo(-6,-10);ctx.lineTo(6,-10);ctx.fill();ctx.restore()}draw();const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function commands(block,limit=120){let result=[];while(block&&result.length<limit){let type=block.type;if(type==='drive')result.push({type:'drive',dir:block.getFieldValue('DIR'),deg:+block.getFieldValue('DEG'),speed:+block.getFieldValue('SPEED')});else if(type==='turn')result.push({type:'turn',angle:+block.getFieldValue('ANGLE')});else if(type==='controls_repeat_ext'){const n=Math.min(10,Math.max(0,Number(block.getInputTargetBlock('TIMES')?.getFieldValue('NUM')||0)));const nested=commands(block.getInputTargetBlock('DO'),limit-result.length);for(let i=0;i<n&&result.length<limit;i++)result.push(...nested.slice(0,limit-result.length))}else if(type==='controls_if'){const cond=block.getInputTargetBlock('IF0');if((cond?.type==='snack'&&detected) || (cond?.type==='colour_is'&&sensorColour===cond.getFieldValue('COLOR')) || (cond?.type==='joystick_direction'&&({UP:joy.y<-.4,DOWN:joy.y>.4,LEFT:joy.x<-.4,RIGHT:joy.x>.4})[cond.getFieldValue('DIRECTION')]) || (cond?.type==='logic_boolean'&&cond.getFieldValue('BOOL')==='TRUE'))result.push(...commands(block.getInputTargetBlock('DO0'),limit-result.length))}block=block.getNextBlock()}return result.slice(0,limit)}
-function allCommands(){return ws.getTopBlocks(true).flatMap(b=>commands(b)).slice(0,120)}
-function unsupportedBlocks(){const supported=new Set(['drive','turn','colour_is','joystick_direction','snack','controls_repeat_ext','controls_if','logic_boolean','math_number']);return [...new Set(ws.getAllBlocks(false).filter(b=>!supported.has(b.type)).map(b=>b.type))]}
 
-const status=document.querySelector('#status');document.querySelector('#run').onclick=async()=>{if(document.querySelector('#backend').value==='lego'){await runHardware();return}if(running)return;const unsupported=unsupportedBlocks();if(unsupported.length){status.textContent='Cannot simulate these blocks yet: '+unsupported.join(', ');return}running=true;const cmds=allCommands();status.textContent=`Running ${cmds.length} commands`;for(const c of cmds){if(!running)break;if(c.type==='drive'){let distance=(c.deg/360)*95*(c.dir==='backward'?-1:1);for(let i=0;i<15&&running;i++){robot.x=Math.max(15,Math.min(465,robot.x+Math.cos(robot.a)*distance/15));robot.y=Math.max(15,Math.min(295,robot.y+Math.sin(robot.a)*distance/15));draw();await sleep(35)}}else{robot.a+=c.angle*Math.PI/180;draw();await sleep(250)}}running=false;status.textContent='Simulation complete'};
+function condition(block){
+ if(!block)return false;
+ const t=block.type,f=n=>block.getFieldValue(n);
+ if(t==='logic_boolean')return f('BOOL')==='TRUE';
+ if(t==='colour_is'||t==='colour_detect')return sensorColour.toLowerCase()===String(f('COLOR')).toLowerCase();
+ if(t==='joystick_direction'||t==='ctrl_test'){const d=f('DIRECTION')||f('DIR');const side=f('SIDE')||'left';return d==='center'?Math.abs(joy.x)<.2&&Math.abs(joy.y)<.2:({UP:joy.y<-.4,DOWN:joy.y>.4,LEFT:joy.x<-.4,RIGHT:joy.x>.4,up:joy.y<-.4,down:joy.y>.4,left:joy.x<-.4,right:joy.x>.4})[d]||false}
+ if(t==='snack')return detected;
+ if(t==='op_not')return !condition(block.getInputTargetBlock('A'));
+ if(t==='op_and'||t==='op_or'){const x=condition(block.getInputTargetBlock('A')),y=condition(block.getInputTargetBlock('B'));return t==='op_and'?x&&y:x||y}
+ if(t==='op_compare'||t==='logic_compare'){const x=Number(value(block.getInputTargetBlock('A'))),y=Number(value(block.getInputTargetBlock('B'))),op=f('OP');return ({'>':x>y,'<':x<y,'=':x===y,'EQ':x===y,'GT':x>y,'LT':x<y,'≥':x>=y,'≤':x<=y,'≠':x!==y})[op]||false}
+ if(t==='colour_reflect_test')return false;
+ return false;
+}
+function value(b){
+ if(!b)return 0;
+ if(b.type==='math_number')return Number(b.getFieldValue('NUM'));
+ if(b.type==='data_timer')return (performance.now()-simStart)/1000;
+ if(b.type==='sound_volume')return volume;
+ if(b.type==='colour_value')return sensorColour;
+ if(b.type==='ctrl_position')return Math.round((b.getFieldValue('SIDE')==='right'?joy.y:joy.x)*100);
+ if(b.type==='ctrl_angle')return Math.atan2(joy.y,joy.x)*180/Math.PI;
+ if(b.type==='op_random')return Math.floor(Math.random()*(+b.getFieldValue('MAX')- +b.getFieldValue('MIN')+1))+ +b.getFieldValue('MIN');
+ if(b.type==='op_arith'){const x=+value(b.getInputTargetBlock('A')),y=+value(b.getInputTargetBlock('B'));return ({'+':x+y,'-':x-y,'*':x*y,'/':y?x/y:0})[b.getFieldValue('OP')]}
+ return 0;
+}
+let simStart=performance.now(),volume=100,movementSpeed=50,motorSpeed=50;
+function allCommands(){
+ const output=[],max=250;
+ function walk(b,depth=0){
+  while(b&&output.length<max){
+   if(depth>12)throw Error('Nested blocks exceed simulator limit');
+   const t=b.type,f=n=>b.getFieldValue(n),child=n=>b.getInputTargetBlock(n);
+   if(t==='event_start'||t==='event_key'||t==='event_receive'){walk(b.getNextBlock(),depth+1);return}
+   if(t==='ctl_repeat'||t==='controls_repeat_ext'){const n=Math.min(50,Math.max(0,Number(t==='ctl_repeat'?f('COUNT'):value(child('TIMES'))));for(let i=0;i<n&&output.length<max;i++)walk(child(t==='ctl_repeat'?'DO':'DO'),depth+1)}
+   else if(t==='ctl_if'||t==='ctl_ifelse'||t==='controls_if'){const yes=condition(child(t==='controls_if'?'IF0':'CONDITION'));walk(child(t==='controls_if'?(yes?'DO0':'ELSE'):(yes?'DO':'ELSE')),depth+1)}
+   else if(t==='ctl_wait')output.push({type:'wait',seconds:Math.max(0,Math.min(10,+f('SECONDS')))});
+   else if(t==='dm_move')output.push({type:'drive',dir:f('DIR'),deg:Math.max(0,Math.min(3600,+f('STEPS')*360)),speed:movementSpeed});
+   else if(t==='dm_turn')output.push({type:'turn',angle:(f('DIR')==='left'?-1:1)*+f('DEG')});
+   else if(t==='dm_start')output.push({type:'drive',dir:f('DIR'),deg:360,speed:movementSpeed});
+   else if(t==='dm_stop'||t==='sm_stop'||t==='dm_motor_stop'||t==='ctl_stop'){output.push({type:'stop'});return}
+   else if(t==='dm_speed')movementSpeed=+f('SPEED');
+   else if(t==='sm_speed'||t==='dm_motor_speed')motorSpeed=+f('SPEED');
+   else if(t==='dm_tank')output.push({type:'tank',left:+f('LEFT'),right:+f('RIGHT')});
+   else if(t==='drive')output.push({type:'drive',dir:f('DIR'),deg:+f('DEG'),speed:+f('SPEED')});
+   else if(t==='turn')output.push({type:'turn',angle:+f('ANGLE')});
+   else if(t==='sm_run'||t==='dm_motor_run')output.push({type:'drive',dir:f('DIR')==='CCW'?'backward':'forward',deg:+f('COUNT')*(f('UNIT')==='degrees'?1:360),speed:motorSpeed});
+   else if(t==='sm_start'||t==='dm_motor_start'||t==='sm_power'||t==='dm_motor_power')output.push({type:'drive',dir:f('DIR')==='CCW'?'backward':'forward',deg:360,speed:motorSpeed});
+   else if(t==='sound_volume_set')volume=Math.max(0,Math.min(100,+f('VOLUME')));
+   else if(t==='text_write')output.push({type:'write',text:f('TEXT')});
+   else if(t==='data_reset_timer')simStart=performance.now();
+   else if(t==='ctl_forever'||t==='ctl_repeatuntil'||t==='ctl_waituntil')throw Error('Continuous loops and wait-until require a live event runtime');
+   else throw Error('Block not yet simulated: '+t);
+   b=b.getNextBlock();
+  }
+ }
+ for(const top of ws.getTopBlocks(true))walk(top);
+ return output;
+}
+const status=document.querySelector('#status');
+document.querySelector('#run').onclick=async()=>{
+ if(document.querySelector('#backend').value==='lego'){await runHardware();return}
+ if(running)return;
+ let cmds;
+ try{cmds=allCommands()}catch(e){status.textContent=e.message;return}
+ if(!cmds.length){status.textContent='No executable blocks. Try Double Motor → move 2 steps.';return}
+ running=true;status.textContent='Running '+cmds.length+' commands';
+ try{
+  for(const c of cmds){
+   if(!running)break;
+   if(c.type==='stop'){running=false;break}
+   if(c.type==='wait'){await sleep(Math.min(10000,c.seconds*1000));continue}
+   if(c.type==='write'){status.textContent=c.text;continue}
+   if(c.type==='tank'){robot.a+=(c.right-c.left)*Math.PI/900;draw();await sleep(200);continue}
+   if(c.type==='turn'){robot.a+=c.angle*Math.PI/180;draw();await sleep(250);continue}
+   if(c.type==='drive'){
+    const distance=(c.deg/360)*95*(c.dir==='backward'?-1:1);
+    for(let i=0;i<15&&running;i++){robot.x=Math.max(15,Math.min(465,robot.x+Math.cos(robot.a)*distance/15));robot.y=Math.max(15,Math.min(295,robot.y+Math.sin(robot.a)*distance/15));draw();await sleep(35)}
+   }
+  }
+  if(running)status.textContent='Simulation complete';
+ }catch(e){status.textContent='Simulation error: '+e.message}
+ finally{running=false}
+};
+function unsupportedBlocks(){return []}
 document.querySelector('#reset').onclick=()=>{running=false;robot={x:65,y:245,a:-Math.PI/2};draw();status.textContent='Reset'};
 document.querySelector('#save').onclick=()=>{const blob=new Blob([JSON.stringify(Blockly.serialization.workspaces.save(ws),null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='canvas-project.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
 document.querySelector('#load').onclick=()=>document.querySelector('#file').click();document.querySelector('#file').onchange=async e=>{try{Blockly.serialization.workspaces.load(JSON.parse(await e.target.files[0].text()),ws)}catch(err){alert('Invalid project: '+err.message)}};
