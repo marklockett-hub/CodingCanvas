@@ -1,39 +1,38 @@
-# Coding Canvas v3: hardware abstraction layer
+# Coding Canvas v5 — LEGO Education-style Word Blocks
 
-This release introduces a common **command representation** used by the browser simulator and the LEGO hardware adapter. Blockly is compiled into a bounded list of `drive` and `turn` actions. The target selector chooses the backend; the same blocks run in both.
+This independent classroom prototype uses Blockly to provide a visual programming palette based on screenshots of the LEGO Education Word Blocks interface. It is **not** an official LEGO Education product or an exact copy of its underlying software.
 
-## Start simulator (Windows, macOS, Chromebook)
+## Launch
+1. Enable GitHub Pages under Settings → Pages, deploy from `main` / `(root)`.
+2. Open https://marklockett-hub.github.io/CodingCanvas/ or serve locally with `python -m http.server 8765 --bind 127.0.0.1`.
+3. Choose **Simulator** to try supported movement blocks. Use **Save project** to download your Blockly project.
 
-Host the directory on localhost or HTTPS. For local use run `python -m http.server 8765 --bind 127.0.0.1` then open **http://localhost:8765**. Blockly and the optional AI model require an internet connection. Camera needs localhost or HTTPS.
+## Palette
+- Single Motor: 11 blocks
+- Double Motor movement: 9 blocks
+- Double Motor independent motors: 11 blocks
+- Motion Sensor: 5 blocks
+- Colour Sensor: 6 blocks
+- Controller: 4 blocks
+- Events: 6 blocks
+- Control: 8 blocks
+- Sound: 4 blocks
+- Operators: 7 blocks
+- Timer: 2 blocks
+- Text: 7 blocks
+- Blockly Variables, Lists and My Blocks (procedures)
+- AI & Simulation: 5 existing prototype blocks
 
-## Start LEGO bridge (Windows or macOS)
+## Important limitations
+**Palette availability is not the same as runtime support.** The newly added blocks have editable fields and a Python preview, but most are placeholders until their behaviour is implemented and tested. Some generated Python is intentionally illustrative, not runnable. The simulator currently runs the earlier `drive`, `turn`, basic repeat/if and sensor/controller conditions. It does not yet execute all v5 LEGO-style blocks. The existing local `bridge.py` remains unchanged and supports only bounded drive/turn actions on the Double Motor; physical Single Motor, Colour Sensor, Controller, Motion Sensor, sounds and events are not implemented. The STOP button is not a guaranteed emergency stop.
 
-Install **Python 3.14+** and run `python -m pip install legoeducation`. From this folder run `python bridge.py` in a second terminal. Open the browser app at **http://localhost:8765**, enter the connection card colour and serial, click Connect, select Real LEGO hardware and click Run program.
+The editor depends on the Blockly CDN and requires internet connectivity for the initial load. Camera classification uses separate third-party CDNs and is experimental.
 
-**Hardware bridge limitations:** The bridge is strictly bound to `127.0.0.1` and only permits browser requests originating at `http://localhost:8765`. It does not execute student-generated Python. Commands are validated and limited to 20 actions, maximum 360 motor degrees per drive, 60% drive speed and 180 degrees per turn. STOP is best-effort and may not interrupt a blocking Bluetooth call. Never treat it as a safety-rated emergency stop. Test with wheels raised and keep a way to physically remove power. Do not expose the bridge to a school network or the internet.
+## Testing
+The repository upload was verified through GitHub. Full browser behaviour, individual Blockly blocks and physical LEGO hardware have **not** been end-to-end tested.
 
-## How the HAL works
-
-- **Blockly** → `allCommands()` expands basic blocks, loops and conditional blocks into a bounded command array.
-- **Simulator backend** → animates the command array on the canvas.
-- **LEGO backend** → sends the same array to the local Python bridge (`POST /execute`). The bridge maps commands to the documented `DoubleMotor.movement_move_for_degrees` and `movement_turn_for_degrees` API.
-- **Camera** → optional MobileNet detection feeds the `snack_detected` conditional in both backends, but detection is sampled before running. This is not a continuous feedback loop.
-
-## Mixed device deployment
-
-Chromebooks can run the simulator and AI camera through a school-hosted HTTPS site. The official LEGO Python API cannot access BLE from Chromebook Linux containers, so hardware mode is limited to the computer running the local bridge. A school-wide hardware gateway would require a separately designed authenticated service and network safety review.
-
-## Known issues
-
-The simulator is approximate and does not model real physics. Python output is illustrative pseudocode, not a directly runnable LEGO program. The generic MobileNet classifier may not recognise snacks reliably. The current Blockly interpreter handles a restricted set of blocks and simple conditions. Hardware connection, BLE latency and motor direction have not been tested on actual devices.
-
-Official API: https://github.com/LEGO/LEGOEducation
-
-
-## v4 sensor and controller extensions
-
-- Adds simulated colour sensor input and interactive two-axis joystick.
-- Adds Blockly conditions for detected colours and joystick directions.
-- Conditions are evaluated from simulator values at program start, not continuously during movement.
-- Physical Colour Sensor and Controller API integration is **not yet implemented**; validate exact API methods and BLE behaviour before enabling.
-- Keep real motor tests supervised, with wheels raised. STOP over Bluetooth is not a safety-rated emergency stop.
+## Next engineering tasks
+1. Browser smoke-test block creation, serialization and Python preview.
+2. Add a safe block interpreter for each category with simulated hardware state.
+3. Verify official LEGO Education Python APIs before adding hardware mappings.
+4. Add unit tests and explicit unsupported-block warnings before physical runs.
